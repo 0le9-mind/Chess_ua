@@ -264,7 +264,7 @@
   function makeWorker() {
     if (workerFails >= 3 || typeof Worker === 'undefined') return null;
     try {
-      const w = new Worker('js/worker.js?v=' + VERSION); dlog('worker started');
+      const w = new Worker('worker.js?v=' + VERSION); dlog('worker started');
       w.onmessage = (ev) => { if (pending && ev.data && ev.data.id === pending.id) { const q = pending; pending = null; clearTimeout(q.timer); q.cb(ev.data.error ? null : ev.data.move); } };
       w.onerror = w.onmessageerror = () => { dlog('worker ERROR'); workerFails++; killWorker(); failPending(); };
       return w;

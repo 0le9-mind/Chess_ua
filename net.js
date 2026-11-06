@@ -1,6 +1,6 @@
 /* Firebase Realtime Database over plain REST + server-sent events (no SDK, no account login). Rules must allow read/write (README step 3). */
 (function () {
-  const url = (window.CHESS_CONFIG.FIREBASE_URL || '').replace(/\/+$/, '');
+  const url = ((window.CHESS_CONFIG || {}).FIREBASE_URL || '').replace(/\/+$/, '');
   const Net = {
     enabled: !!url, skew: 0,
     async req(method, path, body) {
