@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#262421">
+<title>Шахи</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- HOME -->
+  <section id="home" class="screen active">
+    <div class="scroll">
+      <header class="hero"><div class="logo">♞</div><h1 data-i18n="app"></h1></header>
+      <div id="continueBox" class="block" hidden>
+        <h2 data-i18n="continue_title"></h2>
+        <div id="continueList" class="cards"></div>
+      </div>
+      <button class="big primary" id="btnAI"><span class="ic">🖥</span><span data-i18n="play_ai"></span></button>
+      <button class="big" id="btnFriend"><span class="ic">👥</span><span data-i18n="play_friend"></span></button>
+      <div class="row2">
+        <button class="big small" id="btnProfile"><span class="ic">👤</span><span data-i18n="profile"></span></button>
+        <button class="big small" id="btnTop"><span class="ic">🏆</span><span data-i18n="top"></span></button>
+      </div>
+      <div class="block settings">
+        <div class="setrow"><span data-i18n="language"></span>
+          <div class="seg" id="segLang"><button data-v="uk">Українська</button><button data-v="en">English</button></div></div>
+        <div class="setrow"><span data-i18n="sound"></span>
+          <div class="seg" id="segSound"><button data-v="1" data-i18n="on"></button><button data-v="0" data-i18n="off"></button></div></div>
+        <div class="setrow"><span data-i18n="theme"></span>
+          <div class="seg" id="segTheme"><button data-v="sand" data-i18n="th_sand"></button><button data-v="green" data-i18n="th_green"></button><button data-v="blue" data-i18n="th_blue"></button></div></div>
+      </div>
+      <p class="hint" data-i18n="scoring"></p>
+    </div>
+  </section>
+
+  <!-- COMPUTER SETUP -->
+  <section id="setupAI" class="screen">
+    <div class="scroll">
+      <h2 class="title" data-i18n="play_ai"></h2>
+      <div class="block">
+        <h3 data-i18n="choose_level"></h3>
+        <div class="levelbox"><div class="levelnum" id="lvNum">5</div><div class="levelname" id="lvName"></div></div>
+        <input type="range" id="lvRange" min="1" max="10" step="1" value="5">
+        <div class="ticks"><span>1</span><span>5</span><span>10</span></div>
+      </div>
+      <div class="block"><h3 data-i18n="choose_side"></h3>
+        <div class="seg wide" id="segSideAI"><button data-v="1"><i class="mini pw"></i><span data-i18n="white"></span></button><button data-v="0"><i class="mini rnd"></i><span data-i18n="random"></span></button><button data-v="-1"><i class="mini pb"></i><span data-i18n="black"></span></button></div></div>
+      <button class="big primary" id="goAI" data-i18n="start"></button>
+      <button class="big ghost" data-go="home" data-i18n="back"></button>
+    </div>
+  </section>
+
+  <!-- FRIEND SETUP -->
+  <section id="setupFriend" class="screen">
+    <div class="scroll">
+      <h2 class="title" data-i18n="play_friend"></h2>
+      <p class="hint warn" id="friendOff" hidden data-i18n="friend_off"></p>
+      <div id="friendOn">
+        <div class="block"><h3 data-i18n="choose_time"></h3>
+          <div class="tcgroup"><div class="tclabel"><b data-i18n="quick"></b> <small data-i18n="quick_hint"></small></div><div class="chips" id="chipsRapid"></div></div>
+          <div class="tcgroup"><div class="tclabel"><b data-i18n="corr"></b> <small data-i18n="corr_hint"></small></div><div class="chips" id="chipsCorr"></div></div>
+        </div>
+        <div class="block"><h3 data-i18n="choose_side"></h3>
+          <div class="seg wide" id="segSideF"><button data-v="1"><i class="mini pw"></i><span data-i18n="white"></span></button><button data-v="0"><i class="mini rnd"></i><span data-i18n="random"></span></button><button data-v="-1"><i class="mini pb"></i><span data-i18n="black"></span></button></div></div>
+        <button class="big primary" id="goFriend" data-i18n="create_game"></button>
+        <div class="or"><span data-i18n="or"></span></div>
+        <div class="block joinbox"><h3 data-i18n="join_code"></h3>
+          <div class="joinrow"><input id="joinCode" maxlength="8" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC123"><button class="big small" id="goJoin" data-i18n="join"></button></div></div>
+      </div>
+      <button class="big ghost" data-go="home" data-i18n="back"></button>
+    </div>
+  </section>
+
+  <!-- WAITING FOR FRIEND -->
+  <section id="waiting" class="screen">
+    <div class="scroll center">
+      <h2 class="title" data-i18n="invite_title"></h2>
+      <p class="hint" data-i18n="invite_text"></p>
+      <div class="codebox" id="waitCode">------</div>
+      <div class="hint" id="waitInfo"></div>
+      <button class="big primary" id="btnShare"><span class="ic">✈️</span><span data-i18n="share"></span></button>
+      <button class="big" id="btnCopy" data-i18n="copy_code"></button>
+      <p class="hint" data-i18n="saved_hint"></p>
+      <button class="big ghost" id="btnCancelWait" data-i18n="cancel_game"></button>
+      <button class="big ghost" data-go="home" data-i18n="to_menu"></button>
+    </div>
+  </section>
+
+  <!-- PROFILE -->
+  <section id="profileScr" class="screen">
+    <div class="scroll">
+      <h2 class="title" data-i18n="profile"></h2>
+      <div class="pcard">
+        <div class="avatar" id="pAvatar">♟</div>
+        <div class="pname" id="pName"></div>
+        <div class="prate"><span id="pRate">0</span><small data-i18n="rating"></small></div>
+        <div class="pstats">
+          <div><b id="pPlayed">0</b><small data-i18n="matches"></small></div>
+          <div class="g"><b id="pW">0</b><small data-i18n="wins"></small></div>
+          <div><b id="pD">0</b><small data-i18n="draws"></small></div>
+          <div class="r"><b id="pL">0</b><small data-i18n="losses"></small></div>
+        </div>
+      </div>
+      <p class="hint" data-i18n="scoring"></p>
+      <button class="big ghost" data-go="home" data-i18n="back"></button>
+    </div>
+  </section>
+
+  <!-- LEADERBOARD -->
+  <section id="topScr" class="screen">
+    <div class="scroll">
+      <h2 class="title" data-i18n="top"></h2>
+      <div id="topList" class="toplist"></div>
+      <button class="big ghost" data-go="home" data-i18n="back"></button>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="screen">
+    <div class="gwrap">
+      <div class="boardcol">
+        <div class="pbar top" id="barTop"><div class="pav"></div><div class="pinfo"><div class="pn"></div><div class="cap"></div></div><div class="clock"></div></div>
+        <div class="boardbox"><div id="board" class="board"></div><div id="promoLayer" class="promo" hidden></div></div>
+        <div class="pbar bottom" id="barBot"><div class="pav"></div><div class="pinfo"><div class="pn"></div><div class="cap"></div></div><div class="clock"></div></div>
+      </div>
+      <div class="sidecol">
+        <div class="status" id="gStatus"></div>
+        <div class="banner" id="gBanner" hidden></div>
+        <div class="moves" id="gMoves"></div>
+        <div class="actions">
+          <button id="aMenu" title="menu"><span>☰</span><small data-i18n="menu"></small></button>
+          <button id="aFlip"><span>⇅</span><small data-i18n="flip"></small></button>
+          <button id="aUndo"><span>↶</span><small data-i18n="undo"></small></button>
+          <button id="aDraw"><span>½</span><small data-i18n="draw"></small></button>
+          <button id="aResign"><span>⚑</span><small data-i18n="resign"></small></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- dialogs -->
+<div id="modal" class="modal" hidden><div class="mbox" id="mbox"></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/config.js"></script>
+<script src="js/pieces.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/chess.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/net.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
