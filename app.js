@@ -62,7 +62,7 @@
 
   /* ================================================================== GAME STATE */
   let G = null;                 // persisted game object (see newGameObject)
-  let board = null, sans = [], legal = [], flip = false, selected = -1, targets = {}, lastMove = null, busy = false, engineId = 0, engineTimer = null;
+  let board = null, sans = [], legal = [], flip = false, selected = -1, targets = {}, lastMove = null, busy = false, busySince = 0, engineId = 0, engineTimer = null;
   let pieceEls = {}, sqEls = {};
 
   function newGameObject(o) {
@@ -249,26 +249,40 @@
   })();
 
   /* ------------------------------------------------------------------ computer opponent */
-  let worker = null, workerBroken = false, mainSearcher = null;
+  // ---- engine plumbing. Goal: the computer ALWAYS answers, even if the Web Worker misbehaves (slow PC, old WebView, lost message).
+  let worker = null, workerFails = 0, pending = null, mainSearcher = null;
+  const LEVEL_MS = (lvl) => (ChessEngine.LEVELS[lvl] || ChessEngine.LEVELS[5]).ms;
+  function killWorker() { if (worker) { try { worker.terminate(); } catch (e) { /* ignore */ } worker = null; } }
+  function makeWorker() {
+    if (workerFails >= 3 || typeof Worker === 'undefined') return null;
+    try {
+      const w = new Worker('js/worker.js');
+      w.onmessage = (ev) => { if (pending && ev.data && ev.data.id === pending.id) { const q = pending; pending = null; clearTimeout(q.timer); q.cb(ev.data.error ? null : ev.data.move); } };
+      w.onerror = w.onmessageerror = () => { workerFails++; killWorker(); failPending(); };
+      return w;
+    } catch (e) { workerFails = 9; return null; }
+  }
+  function runMain(fen, level, cb) {            // fallback: search on the page thread (briefly blocks the UI, but never hangs)
+    setTimeout(() => { let mv = null; try { mainSearcher = mainSearcher || new ChessEngine.Searcher(); mv = uci(mainSearcher.think(new Board(fen), level).move); } catch (e) { mv = null; } cb(mv); }, 30);
+  }
+  function failPending() { if (!pending) return; const q = pending; pending = null; clearTimeout(q.timer); runMain(q.fen, q.level, q.cb); }
   function engineSearch(fen, level, cb) {
     const id = ++engineId;
-    const done = (res) => { if (id === engineId) cb(res); };
-    if (!worker && !workerBroken) {
-      try { worker = new Worker('js/worker.js'); worker.onerror = () => { workerBroken = true; worker = null; }; }
-      catch (e) { workerBroken = true; worker = null; }
-    }
-    if (worker) {
-      const handler = (ev) => { if (ev.data.id !== id) return; worker.removeEventListener('message', handler); done(ev.data.error ? null : ev.data.move); };
-      worker.addEventListener('message', handler); worker.postMessage({ id, fen, level });
-    } else {
-      setTimeout(() => { try { mainSearcher = mainSearcher || new ChessEngine.Searcher(); const r = mainSearcher.think(new Board(fen), level); done(uci(r.move)); } catch (e) { done(null); } }, 30);
-    }
+    if (pending) { clearTimeout(pending.timer); pending = null; }
+    const done = (mv) => { if (id === engineId) cb(mv); };
+    if (!worker) worker = makeWorker();
+    if (!worker) { runMain(fen, level, done); return id; }
+    pending = { id, fen, level, cb: done, timer: setTimeout(() => { workerFails = 9; killWorker(); failPending(); }, LEVEL_MS(level) * 2 + 4000) };
+    worker.postMessage({ id, fen, level });
     return id;
   }
-  function cancelEngine() { engineId++; busy = false; clearTimeout(engineTimer); }
+  function cancelEngine() {
+    engineId++; busy = false; clearTimeout(engineTimer);
+    if (pending) { clearTimeout(pending.timer); pending = null; killWorker(); }   // a half-finished search must not delay the next one
+  }
   function requestEngine() {
     if (!G || G.mode !== 'ai' || G.status !== 'active' || board.turn === G.myColor || !legal.length) { busy = false; renderStatus(); return; }
-    busy = true; renderStatus();
+    busy = true; busySince = Date.now(); renderStatus();
     const t0 = Date.now(), gid = G.id, plies = G.moves.length;
     engineSearch(board.fen(), G.level, (u) => {
       engineTimer = setTimeout(() => {
@@ -586,6 +600,29 @@
     } catch (e) { /* retry on the next tick */ }
     finally { setTimeout(() => { timeoutBusy = false; }, 3000); }
   }
+
+  /* ------------------------------------------------------------------ self-healing heartbeat (every second while a game is open) */
+  function domMatchesBoard() {
+    const els = $$('#board .pc'); let n = 0;
+    for (const sq of allSquares) if (board.sq[sq]) n++;
+    if (els.length !== n) return false;
+    for (const sq of allSquares) if (board.sq[sq] && !pieceEls[sq]) return false;
+    return true;
+  }
+  function heartbeat() {
+    if (!G || screen !== 'game' || !board) return;
+    try {
+      if (!domMatchesBoard()) { renderPieces(); renderAll(); }
+      if (G.mode === 'ai' && G.status === 'active' && board.turn !== G.myColor && legal.length) {
+        // computer should be thinking; if nothing is pending (lost callback) or it took far too long, start again
+        if (!busy || (Date.now() - busySince > LEVEL_MS(G.level) * 3 + 9000)) { cancelEngine(); requestEngine(); }
+      }
+      if (G.status === 'active') { const o = board.outcome(legal); if (o) { finishGame(o.result, o.reason, G.mode === 'pvp'); renderAll(); } }
+    } catch (e) { /* keep the loop alive */ }
+  }
+  setInterval(heartbeat, 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(heartbeat, 100); });
+  window.addEventListener('focus', () => setTimeout(heartbeat, 100));
 
   /* ================================================================== HOME / PROFILE / TOP */
   async function renderHome() {

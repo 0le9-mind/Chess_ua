@@ -13,5 +13,6 @@
   for (const k in sym) s += `<symbol id="pc-${k}" viewBox="0 0 45 45">${sym[k]}</symbol>`;
   s += '</defs></svg>';
   document.body.insertAdjacentHTML('afterbegin', s);
-  window.pieceSVG = (t, color) => `<svg viewBox="0 0 45 45" class="pcs ${color === 1 ? 'pw' : 'pb'}"><use href="#pc-${'PNBRQK'[t - 1]}"/></svg>`;
+  // black pieces get a light halo drawn as a thick underlay (cheaper than CSS filters on weak devices)
+  window.pieceSVG = (t, color) => { const id = '#pc-' + 'PNBRQK'[t - 1]; return `<svg viewBox="0 0 45 45" class="pcs ${color === 1 ? 'pw' : 'pb'}">${color === 1 ? '' : `<use class="halo" href="${id}"/>`}<use href="${id}"/></svg>`; };
 })();

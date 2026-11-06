@@ -211,13 +211,14 @@
       this.nodes = 0; this.stop = false; this.deadline = Date.now() + cfg.ms;
 
       if (cfg.margin > 0) {                       // weak levels: score every root move, then pick one of the decent ones at random
-        const scored = [];
+        const scored = [], total = Date.now() + cfg.ms * 2;   // one overall budget for ALL root moves
         for (const m of legal) {
           b.make(m);
           let v;
           const o = b.outcome();
           if (o) v = o.result === 'd' ? 0 : MATE;
-          else { this.stop = false; this.deadline = Date.now() + cfg.ms; v = -this.search(b, cfg.depth - 1, -INF, INF, 1, true); }
+          else if (Date.now() > total) v = -evaluate(b);              // out of time: static score only
+          else { this.stop = false; this.deadline = Math.min(total, Date.now() + cfg.ms); v = -this.search(b, cfg.depth - 1, -INF, INF, 1, true); if (this.stop) v = -evaluate(b); }
           b.unmake();
           scored.push([v, m]);
         }
