@@ -104,7 +104,7 @@
   }
   function startAI(level, sideChoice) {
     const side = sideChoice === 0 ? (Math.random() < 0.5 ? WHITE : BLACK) : sideChoice;
-    openGame(newGameObject({ mode: 'ai', level, myColor: side, white: { id: side === WHITE ? me.id : 'cpu', name: side === WHITE ? me.name : '' }, black: { id: side === BLACK ? me.id : 'cpu', name: side === BLACK ? me.name : '' } }));
+    openGame(newGameObject({ mode: 'ai', level, myColor: side, white: { id: side === WHITE ? me.id : 'cpu', name: side === WHITE ? me.name : '', photo: side === WHITE ? me.photo || '' : '' }, black: { id: side === BLACK ? me.id : 'cpu', name: side === BLACK ? me.name : '', photo: side === BLACK ? me.photo || '' : '' } }));
     saveLocal();
   }
 
@@ -363,11 +363,26 @@
     if (!seat) return '…';
     return seat.id === me.id ? me.name : (seat.name || T('opponent'));
   }
+  function seatPhoto(c) {
+    const seat = c === WHITE ? G.white : G.black;
+    if (G.mode === 'ai' && c !== G.myColor) return null;
+    const url = seat && seat.id === me.id ? me.photo : seat && seat.photo;
+    return url && (/^https:\/\//.test(url) || /^data:image\//.test(url)) ? url : '';
+  }
+  function setAvatar(el, c) {
+    const cpu = G.mode === 'ai' && c !== G.myColor, name = seatName(c), photo = cpu ? null : seatPhoto(c);
+    const key = (cpu ? 'cpu' : photo || '') + '|' + name + '|' + c;
+    if (el.dataset.key === key) return;
+    el.dataset.key = key; el.dataset.c = c === WHITE ? 'w' : 'b'; el.textContent = '';
+    const initial = cpu ? '🤖' : (Array.from(name.replace(/[^\p{L}\p{N}]/gu, ''))[0] || '♟').toUpperCase();
+    if (photo) { const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer'; img.onerror = () => { img.remove(); el.insertBefore(document.createTextNode(initial), el.firstChild); }; img.src = photo; el.appendChild(img); }
+    else el.insertBefore(document.createTextNode(initial), el.firstChild);
+  }
   function renderBars() {
     const bottom = flip ? BLACK : WHITE, top = -bottom, mat = materialInfo();
     for (const [sel, c] of [['#barTop', top], ['#barBot', bottom]]) {
       const bar = $(sel);
-      $('.pav', bar).innerHTML = pieceSVG(K, c);
+      setAvatar($('.pav', bar), c);
       $('.pn', bar).textContent = seatName(c);
       const adv = mat[c].pts - mat[-c].pts;
       $('.cap', bar).innerHTML = mat[c].list.map((t) => pieceSVG(t, -c)).join('') + (adv > 0 ? `<span class="adv">+${adv}</span>` : '');
@@ -519,7 +534,7 @@
     if (!Net.enabled) { toast(T('friend_off')); return; }
     const side = sideChoice === 0 ? (Math.random() < 0.5 ? WHITE : BLACK) : sideChoice;
     const g = newGameObject({ mode: 'pvp', tc, myColor: side, status: 'waiting', clocks: { w: startMs(tc), b: startMs(tc) } });
-    g[side === WHITE ? 'white' : 'black'] = { id: me.id, name: me.name };
+    g[side === WHITE ? 'white' : 'black'] = { id: me.id, name: me.name, photo: me.photo || '' };
     const doc = { created: g.created, start: g.start, tc, white: g.white, black: g.black, moves: '', status: 'waiting', result: '', reason: '', clocks: g.clocks, ts: 0, drawOffer: '' };
     try {
       await Net.put('games/' + g.id, doc);
@@ -529,17 +544,19 @@
     rememberGame(g.id); G = g; rebuild(); saveLocal();
     show('waiting'); renderWaiting(); listenGame(g.id);
   }
-  async function joinFriendGame(gid) {
+  async function joinFriendGame(gid, auto) {
     gid = (gid || '').trim().toUpperCase();
+    dlog('join ' + gid + (auto ? ' (link)' : ''));
     if (!gid) return;
-    if (!Net.enabled) { toast(T('friend_off')); return; }
-    let doc; try { doc = await Net.get('games/' + gid); } catch (e) { toast(T('error_net')); return; }
+    if (!Net.enabled) { toast(T('friend_off')); if (auto) renderHome(); return; }
+    let doc; try { doc = await Net.get('games/' + gid); } catch (e) { toast(T('error_net')); if (auto) renderHome(); return; }
     if (!doc) { toast(T('game_not_found')); return; }
+    if (auto && doc.status === 'over') { renderHome(); return; }
     const amWhite = doc.white && doc.white.id === me.id, amBlack = doc.black && doc.black.id === me.id;
     if (!amWhite && !amBlack) {
       if (doc.status !== 'waiting' || (doc.white && doc.black)) { toast(T('game_full')); return; }
       const seat = doc.white ? 'black' : 'white', now = Net.now();
-      try { await Net.patch('games/' + gid, { [seat]: { id: me.id, name: me.name }, status: 'active', ts: now }); await Net.put(`players/${me.id}/games/${gid}`, now); doc = await Net.get('games/' + gid); }
+      try { await Net.patch('games/' + gid, { [seat]: { id: me.id, name: me.name, photo: me.photo || '' }, status: 'active', ts: now }); await Net.put(`players/${me.id}/games/${gid}`, now); doc = await Net.get('games/' + gid); }
       catch (e) { toast(T('error_net')); return; }
     }
     rememberGame(gid);
@@ -557,18 +574,30 @@
   function rememberGame(gid) { const l = safe.get('chess.mygames', []); if (!l.includes(gid)) { l.unshift(gid); safe.set('chess.mygames', l.slice(0, 30)); } }
 
   /* waiting screen */
-  const inviteLink = (gid) => (CFG.TG_APP_LINK ? CFG.TG_APP_LINK.replace(/\/+$/, '') + '?startapp=g_' + gid : '');
+  const LINK_RE = /^https:\/\/t\.me\/[A-Za-z0-9_]{4,}(\/[A-Za-z0-9_]+)?\/?$/;
+  const tgBase = () => { const l = (CFG.TG_APP_LINK || '').trim() || safe.get('chess.tglink', ''); return LINK_RE.test(l) ? l.replace(/\/+$/, '') : ''; };
+  const inviteLink = (gid) => (tgBase() ? tgBase() + '?startapp=g_' + gid : '');
   function renderWaiting() {
     $('#waitCode').textContent = G.id;
     $('#waitInfo').textContent = `${T('your_color_is')}: ${G.myColor === WHITE ? T('white') : T('black')} · ${tcLabel(G.tc)}`;
+    $('#linkSetup').hidden = !!tgBase();
   }
-  $('#btnShare').onclick = () => {
-    const link = inviteLink(G.id), text = `♟ ${T('app')}: ${T('code')} ${G.id}`;
-    if (link && tg && tg.openTelegramLink) tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text));
-    else if (navigator.share) navigator.share({ title: T('app'), text: link ? text + '\n' + link : text }).catch(() => {});
-    else copyText(link || G.id);
-  };
+  function shareInvite() {
+    const link = inviteLink(G.id);
+    if (!link) { $('#linkSetup').hidden = false; toast(T('link_setup_hint')); return; }
+    const text = T('invite_msg');
+    if (tg && tg.openTelegramLink) tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text));
+    else if (navigator.share) navigator.share({ title: T('app'), text: text + '\n' + link }).catch(() => {});
+    else copyText(text + ' ' + link);
+  }
+  $('#btnShare').onclick = shareInvite;
+  $('#btnCopyLink').onclick = () => { const link = inviteLink(G.id); if (!link) { $('#linkSetup').hidden = false; toast(T('link_setup_hint')); } else copyText(link); };
   $('#btnCopy').onclick = () => copyText(G.id);
+  $('#btnSaveLink').onclick = () => {
+    const v = $('#tgLinkInput').value.trim();
+    if (!LINK_RE.test(v)) { toast(T('link_bad')); return; }
+    safe.set('chess.tglink', v.replace(/\/+$/, '')); renderWaiting(); toast(T('copied'));
+  };
   $('#btnCancelWait').onclick = async () => {
     const gid = G && G.id; cancelEngine();
     if (gid && Net.enabled) { try { await Net.del('games/' + gid); await Net.del(`players/${me.id}/games/${gid}`); } catch (e) { /* ignore */ } }
@@ -748,10 +777,11 @@
     window.__chess = { get G() { return G; }, get board() { return board; }, me, Profile, Sound, show, openGame, startAI, commitMove, tryUserMove, get screen() { return screen; } };
     show('home');
     await Net.syncClock(); Profile.pull();
-    const param = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || new URLSearchParams(location.search).get('join') || (location.hash.match(/join=([A-Za-z0-9]+)/) || [])[1] || '';
-    const code = param.replace(/^g_/, '');
-    if (code && code !== safe.get('chess.lastJoin', '')) { safe.set('chess.lastJoin', code); joinFriendGame(code); }
-    else renderHome();
+    const q = new URLSearchParams(location.search), hq = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+    const param = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || hq.get('tgWebAppStartParam') || q.get('tgWebAppStartParam') || q.get('startapp') || q.get('join') || hq.get('join') || '';
+    const code = String(param).replace(/^g_/, '').replace(/[^A-Za-z0-9]/g, '');
+    dlog('start param: ' + (param || '-'));
+    if (code) { toast(T('joining')); await joinFriendGame(code, true); } else renderHome();
   }
   boot();
 })();
