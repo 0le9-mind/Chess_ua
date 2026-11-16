@@ -53,6 +53,7 @@
       ping(c, o, t + 0.45, 55, 0.35, 2.4);
     },
     over(c, o, t) { [392, 330, 262].forEach((f, i) => ping(c, o, t + i * 0.16, f, 0.28, 0.6, 'triangle')); },
+    msg(c, o, t) { ping(c, o, t, 660, 0.22, 0.2); ping(c, o, t + 0.09, 880, 0.22, 0.3); },
     start(c, o, t) { knock(c, o, t, 0.6, 1.1, 1); knock(c, o, t + 0.09, 0.6, 0.9, 1); },
   };
   Sound.recipes = recipes;

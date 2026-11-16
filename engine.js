@@ -7,6 +7,7 @@
 
   // level: depth (max plies), ms (time cap), margin (levels 1-5 pick randomly among moves within `margin` centipawns of the best)
   const LEVELS = {
+    0: { depth: 1, ms: 200, margin: 900 },
     1: { depth: 1, ms: 300, margin: 450 },
     2: { depth: 1, ms: 300, margin: 220 },
     3: { depth: 2, ms: 400, margin: 130 },
@@ -203,7 +204,7 @@
     // returns { move, score }
     think(b, level, rng) {
       rng = rng || Math.random;
-      const cfg = LEVELS[Math.max(1, Math.min(10, level))];
+      const cfg = LEVELS[Math.max(0, Math.min(10, level | 0))];
       const legal = b.legalMoves();
       if (!legal.length) return { move: 0, score: 0 };
       if (legal.length === 1) return { move: legal[0], score: 0 };

@@ -62,6 +62,7 @@
     if (tg) { try { if (id === 'home') tg.BackButton.hide(); else tg.BackButton.show(); } catch (e) { /* old client */ } }
     if (id !== 'game' && id !== 'waiting') stopListening();
     if (id === 'home') renderHome();
+    if (id === 'botsScr') renderBotsList();
     if (id === 'profileScr') renderProfile();
     if (id === 'topScr') renderTop();
     if (id === 'setupFriend') { $('#friendOff').hidden = Net.enabled; $('#friendOn').hidden = !Net.enabled; renderChips(); }
@@ -96,7 +97,7 @@
   /* ------------------------------------------------------------------ opening a game */
   function openGame(g) {
     cancelEngine(); hideModal();
-    G = g; flip = G.myColor === BLACK; selected = -1; targets = {}; busy = false;
+    G = g; flip = G.myColor === BLACK; selected = -1; targets = {}; busy = false; chatMsgs = []; $('#chatSheet').hidden = true; $('#bubble').hidden = true;
     rebuild(); show('game'); buildBoard(); renderAll(); startClockTimer();
     if (!G.moves.length) Sound.play('start');
     if (G.mode === 'ai') requestEngine();
@@ -107,6 +108,15 @@
     openGame(newGameObject({ mode: 'ai', level, myColor: side, white: { id: side === WHITE ? me.id : 'cpu', name: side === WHITE ? me.name : '', photo: side === WHITE ? me.photo || '' : '' }, black: { id: side === BLACK ? me.id : 'cpu', name: side === BLACK ? me.name : '', photo: side === BLACK ? me.photo || '' : '' } }));
     saveLocal();
   }
+
+  function startBot(id, sideChoice) {
+    const b = Bots.get(id); if (!b) return;
+    const side = sideChoice === 0 ? (Math.random() < 0.5 ? WHITE : BLACK) : sideChoice;
+    const mk = (c) => ({ id: side === c ? me.id : 'cpu', name: side === c ? me.name : '', photo: side === c ? me.photo || '' : '' });
+    openGame(newGameObject({ mode: 'ai', level: b.level, bot: id, chatLines: [], botState: { last: -99, kind: '' }, myColor: side, white: mk(WHITE), black: mk(BLACK) }));
+    saveLocal();
+  }
+  const curBot = () => (G && G.bot ? Bots.get(G.bot) : null);
 
   /* ------------------------------------------------------------------ board drawing */
   const fileOf = (s) => s & 7, rankOf = (s) => s >> 4;
@@ -182,7 +192,7 @@
     if (!G || G.status !== 'active') return;
     selected = -1; targets = {};
     const mover = board.turn;
-    moveSound(applyMove(m));
+    const info = applyMove(m); moveSound(info);
     G.moves.push(uci(m));
     if (G.mode === 'pvp' && source === 'me') updateClocksAfterMove(mover);
     const o = board.outcome(legal);
@@ -191,6 +201,7 @@
     renderHighlights(); renderBars(); renderMoves(); renderStatus(); renderActions(); renderBanner();
     saveLocal();
     if (G.mode === 'pvp' && source === 'me') pushState();
+    if (G.bot && source === 'engine') botReact(info);
     if (G.mode === 'ai' && G.status === 'active') requestEngine();
   }
   function tryUserMove(from, to) {
@@ -359,7 +370,7 @@
   }
   function seatName(c) {
     const seat = c === WHITE ? G.white : G.black;
-    if (G.mode === 'ai') return c === G.myColor ? me.name : T('computer') + ' · ' + T('level') + ' ' + G.level;
+    if (G.mode === 'ai') { const b = curBot(); return c === G.myColor ? me.name : b ? Bots.name(b, settings.lang) : T('computer') + ' · ' + T('level') + ' ' + G.level; }
     if (!seat) return '…';
     return seat.id === me.id ? me.name : (seat.name || T('opponent'));
   }
@@ -371,9 +382,11 @@
   }
   function setAvatar(el, c) {
     const cpu = G.mode === 'ai' && c !== G.myColor, name = seatName(c), photo = cpu ? null : seatPhoto(c);
-    const key = (cpu ? 'cpu' : photo || '') + '|' + name + '|' + c;
+    const bot = cpu ? curBot() : null;
+    const key = (cpu ? 'cpu' + (bot ? bot.id : '') : photo || '') + '|' + name + '|' + c;
     if (el.dataset.key === key) return;
     el.dataset.key = key; el.dataset.c = c === WHITE ? 'w' : 'b'; el.textContent = '';
+    if (bot) { el.innerHTML = bot.avatar; return; }
     const initial = cpu ? '🤖' : (Array.from(name.replace(/[^\p{L}\p{N}]/gu, ''))[0] || '♟').toUpperCase();
     if (photo) { const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer'; img.onerror = () => { img.remove(); el.insertBefore(document.createTextNode(initial), el.firstChild); }; img.src = photo; el.appendChild(img); }
     else el.insertBefore(document.createTextNode(initial), el.firstChild);
@@ -434,6 +447,7 @@
     const over = G.status !== 'active', ai = G.mode === 'ai';
     $('#aUndo').classList.toggle('hide', !ai || over); $('#aUndo').disabled = !(ai && G.moves.length >= 1);
     $('#aDraw').classList.toggle('hide', over); $('#aDraw').disabled = G.status !== 'active' || (G.mode === 'pvp' && !!G.drawOffer && G.drawOffer === colorKey(G.myColor));
+    $('#aChat').classList.toggle('hide', !(G.bot || (G.mode === 'pvp' && G.status !== 'waiting'))); renderBadge();
     const rs = $('#aResign'); rs.querySelector('span').textContent = over ? '↻' : '⚑'; rs.querySelector('small').textContent = over ? T('rematch') : T('resign');
     rs.dataset.mode = over ? 'rematch' : 'resign'; rs.classList.toggle('hide', over && G.mode === 'pvp' && !Net.enabled);
   }
@@ -479,6 +493,130 @@
     });
   };
 
+  /* ================================================================== BOTS: menu, reactions */
+  function renderBotsList() {
+    const box = $('#botsList'); box.innerHTML = '';
+    for (const b of Bots.list) {
+      const el = document.createElement('button'); el.className = 'botcard';
+      el.innerHTML = `<span class="bav">${b.avatar}</span><span class="bt"><b>${esc(Bots.name(b, settings.lang))}</b><small>${esc(Bots.bio(b, settings.lang))}</small></span><span class="brate">${b.rating}</span>`;
+      el.onclick = () => openBotDialog(b);
+      box.appendChild(el);
+    }
+  }
+  function openBotDialog(b) {
+    let side = settings.side;
+    showModal(`<div class="botbig">${b.avatar}</div><h3>${esc(Bots.name(b, settings.lang))}</h3><div class="brate big">${T('bot_rating')} ${b.rating}</div><p>${esc(Bots.bio(b, settings.lang))}</p>
+      <div class="seg" id="segBotSide"><button data-v="1">${T('white')}</button><button data-v="0">${T('random')}</button><button data-v="-1">${T('black')}</button></div>
+      <button class="big primary" id="mPlayBot">${T('play')}</button><button class="big" id="mClose">${T('close')}</button>`, (box) => {
+      const segs = $$('#segBotSide button', box), mark = () => segs.forEach((x) => x.classList.toggle('on', +x.dataset.v === side));
+      segs.forEach((x) => { x.onclick = () => { side = +x.dataset.v; settings.side = side; saveSettings(); mark(); }; }); mark();
+      $('#mClose', box).onclick = hideModal;
+      $('#mPlayBot', box).onclick = () => { hideModal(); startBot(b.id, side); };
+    });
+  }
+  let bubbleTimer = null;
+  function showBubble(who, avatar, text) {
+    const el = $('#bubble'); if (!el) return;
+    el.innerHTML = `<span class="bav">${avatar || ''}</span><span><b>${esc(who)}</b>${esc(text)}</span>`; el.hidden = false;
+    clearTimeout(bubbleTimer); bubbleTimer = setTimeout(() => { el.hidden = true; }, 6000);
+    el.onclick = () => { el.hidden = true; };
+  }
+  function botSay(text) {
+    const b = curBot(); if (!b || !text) return;
+    G.chatLines = (G.chatLines || []).concat([{ from: 'bot', text, t: Date.now() }]).slice(-40);
+    if (chatOpen()) renderChat(); else { G.botUnread = (G.botUnread || 0) + 1; renderBadge(); showBubble(Bots.name(b, settings.lang), b.avatar, text); Sound.play('msg'); }
+    saveLocal();
+  }
+  function botReact(info) {
+    const b = curBot(); if (!b || G.status !== 'active') return;
+    const st = G.botState || (G.botState = { last: -99, kind: '' }), plies = G.moves.length;
+    let ev = 0; try { ev = ChessEngine.evaluate(board); } catch (e) { return; }
+    const botScore = board.turn === G.myColor ? -ev : ev;      // after the bot's move it is the player's turn
+    let kind = null;
+    if (plies >= 8 && plies - st.last >= 4) {
+      const k = botScore >= 300 ? 'botAhead' : botScore <= -300 ? 'playerAhead' : null;
+      if (k && (k !== st.kind || plies - st.last >= 12)) kind = k;
+    }
+    if (!kind && info && info.capture && plies - st.last >= 3 && Math.random() < 0.4 && b.lines.capture) kind = 'capture';
+    if (!kind && plies - st.last >= 14 && Math.random() < 0.5 && b.lines.idle) kind = 'idle';
+    if (!kind) return;
+    const line = Bots.pick(b, kind, settings.lang); if (!line) return;
+    st.last = plies; if (kind === 'botAhead' || kind === 'playerAhead') st.kind = kind;
+    botSay(line);
+  }
+
+  /* ================================================================== CHAT */
+  let chatMsgs = [], lastSend = 0;
+  const chatOpen = () => !$('#chatSheet').hidden;
+  const readKey = () => 'chess.read.' + (G ? G.id : '');
+  function allMsgs() { return G && G.bot ? (G.chatLines || []) : chatMsgs; }
+  function unreadCount() {
+    if (!G) return 0;
+    if (G.bot) return G.botUnread || 0;
+    const t = safe.get(readKey(), 0);
+    return chatMsgs.filter((m) => m.from !== me.id && m.t > t).length;
+  }
+  function renderBadge() { const bd = $('#aChat .badge'); if (!bd) return; const n = unreadCount(); bd.hidden = !n; bd.textContent = n > 9 ? '9+' : String(n); }
+  function markRead() {
+    if (!G) return;
+    if (G.bot) { G.botUnread = 0; saveLocal(); } else { const last = chatMsgs.length ? chatMsgs[chatMsgs.length - 1].t : 0; safe.set(readKey(), last); }
+    renderBadge();
+  }
+  function setChat(obj) {
+    const list = [];
+    if (obj && typeof obj === 'object') for (const k of Object.keys(obj)) { const m = obj[k]; if (m && typeof m.text === 'string') list.push({ k, from: String(m.from || ''), name: String(m.name || ''), text: m.text.slice(0, 200), t: +m.t || 0 }); }
+    list.sort((a, b) => a.t - b.t || (a.k < b.k ? -1 : 1));
+    const before = new Set(chatMsgs.map((m) => m.k));
+    const fresh = list.filter((m) => !before.has(m.k) && m.from !== me.id);
+    // keep optimistic local messages that the server has not echoed yet
+    for (const m of chatMsgs) if (m.pending && !list.some((x) => x.k === m.k)) list.push(m);
+    chatMsgs = list;
+    if (chatOpen()) { renderChat(); markRead(); }
+    else if (fresh.length && before.size + fresh.length > 0 && (before.size > 0 || safe.get(readKey(), 0) < fresh[0].t)) {
+      const m = fresh[fresh.length - 1]; renderBadge();
+      if (!(before.size === 0 && safe.get(readKey(), 0) >= m.t)) { showBubble(m.name || T('opponent'), '', m.text); Sound.play('msg'); }
+    } else renderBadge();
+  }
+  function renderChat() {
+    const box = $('#chatList'), b = curBot(), msgs = allMsgs(), near = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    if (!msgs.length) { box.innerHTML = `<div class="empty">${T(G && G.bot ? 'chat_bot_empty' : 'chat_empty')}</div>`; return; }
+    box.innerHTML = msgs.map((m) => {
+      const mine = m.from === me.id, bot = m.from === 'bot';
+      const who = bot ? Bots.name(b, settings.lang) : m.name || T('opponent');
+      return `<div class="msg${mine ? ' me' : ''}">${bot ? `<span class="mav">${b.avatar}</span>` : ''}<div class="mb"><span class="mn">${esc(who)}</span>${esc(m.text)}</div></div>`;
+    }).join('');
+    if (near || !box.dataset.init) { box.scrollTop = box.scrollHeight; box.dataset.init = '1'; }
+  }
+  function openChat() {
+    if (!G) return;
+    const b = curBot(), opp = G.myColor === WHITE ? G.black : G.white;
+    $('#chatTitle').textContent = b ? Bots.name(b, settings.lang) : (opp && opp.name ? opp.name : T('chat_title'));
+    $('#chatInputRow').hidden = !!G.bot;
+    $('#chatList').dataset.init = ''; $('#bubble').hidden = true;
+    $('#chatSheet').hidden = false; renderChat(); markRead(); layoutChat();
+    if (!G.bot) setTimeout(() => { try { $('#chatText').focus(); } catch (e) { /* ignore */ } }, 120);
+  }
+  function closeChat() { $('#chatSheet').hidden = true; try { $('#chatText').blur(); } catch (e) { /* ignore */ } markRead(); }
+  function layoutChat() { const vv = window.visualViewport, sh = $('#chatSheet'); sh.style.height = (vv ? vv.height : (tg && tg.viewportStableHeight) || window.innerHeight) + 'px'; sh.style.top = (vv ? vv.offsetTop : 0) + 'px'; }
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', layoutChat); window.visualViewport.addEventListener('scroll', layoutChat); }
+  async function sendChat() {
+    if (!G || G.mode !== 'pvp') return;
+    const inp = $('#chatText'), text = inp.value.replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!text) return;
+    if (!Net.enabled) { toast(T('friend_off')); return; }
+    const now = Date.now(); if (now - lastSend < 1200) return; lastSend = now;
+    const k = now.toString(36).padStart(9, '0') + Math.random().toString(36).slice(2, 6), t = Net.now();
+    const msg = { from: me.id, name: me.name, text, t };
+    inp.value = '';
+    chatMsgs.push({ k, from: me.id, name: me.name, text, t, pending: true }); renderChat(); markRead();
+    try { await Net.put(`games/${G.id}/chat/${k}`, msg); const m = chatMsgs.find((x) => x.k === k); if (m) m.pending = false; }
+    catch (e) { toast(T('error_net')); chatMsgs = chatMsgs.filter((x) => x.k !== k); inp.value = text; renderChat(); }
+  }
+  $('#aChat').onclick = openChat;
+  $('#chatClose').onclick = closeChat;
+  $('#chatSend').onclick = sendChat;
+  $('#chatText').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChat(); } });
+
   /* ================================================================== FRIEND GAMES (Firebase) */
   let stopListen = null, clockTimer = null, timeoutBusy = false, pendingPush = false;
   function stopListening() { if (stopListen) { stopListen(); stopListen = null; } }
@@ -507,6 +645,7 @@
       for (let i = G.moves.length; i < remote.moves.length; i++) { const m = board.fromUci(remote.moves[i]); if (!m) { G.moves = remote.moves; rebuild(); renderPieces(); break; } commitRemote(m); }
     }
     G.drawOffer = remote.drawOffer;
+    setChat(doc.chat);
     if (was === 'waiting' && remote.status === 'active') { G.status = 'active'; toast(T('opp_joined')); haptic('ok'); if (screen === 'waiting') { flip = G.myColor === BLACK; show('game'); buildBoard(); startClockTimer(); } }
     if (remote.status === 'over' && G.status !== 'over') { G.status = 'active'; finishGame(remote.result, remote.reason, false); }
     else if (remote.status === 'active') G.status = 'active';
@@ -701,7 +840,8 @@
   function cardAI(g) {
     const n = Math.ceil(g.moves.length / 2), b = new Board(g.start); for (const u of g.moves) { const m = b.fromUci(u); if (!m) break; b.make(m); }
     const mine = b.turn === g.myColor;
-    return mkCard('🖥', `${T('vs_computer')} · ${T('level')} ${g.level}`, `${T('move_n')} ${n || 1} · ${mine ? T('your_move') : T('their_move')}`, mine ? '' : 'wait', () => openGame(g));
+    const bt = g.bot ? Bots.get(g.bot) : null;
+    return mkCard(bt ? bt.avatar : '🖥', bt ? Bots.name(bt, settings.lang) : `${T('vs_computer')} · ${T('level')} ${g.level}`, `${T('move_n')} ${n || 1} · ${mine ? T('your_move') : T('their_move')}`, mine ? '' : 'wait', () => openGame(g));
   }
   function cardPVP(g) {
     const opp = g.myColor === WHITE ? g.black : g.white;
@@ -746,6 +886,7 @@
   $('#goJoin').onclick = () => joinFriendGame($('#joinCode').value);
   $('#joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinFriendGame($('#joinCode').value); });
   $('#btnAI').onclick = () => { $('#lvRange').value = settings.level; $('#lvNum').textContent = settings.level; $('#lvName').textContent = T('level_' + settings.level); show('setupAI'); };
+  $('#btnBots').onclick = () => show('botsScr');
   $('#btnFriend').onclick = () => show('setupFriend');
   $('#btnProfile').onclick = () => show('profileScr');
   $('#btnTop').onclick = () => show('topScr');
@@ -769,12 +910,12 @@
   async function boot() {
     I18N.set(settings.lang); document.documentElement.dataset.theme = settings.theme; Sound.enabled = !!settings.sound;
     if (tg) {
-      try { tg.ready(); tg.expand(); tg.setHeaderColor('#262421'); tg.setBackgroundColor('#262421'); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); tg.BackButton.onClick(() => { if (screen === 'home') return; goHome(); }); tg.onEvent('viewportChanged', setViewport); } catch (e) { /* older client */ }
+      try { tg.ready(); tg.expand(); tg.setHeaderColor('#262421'); tg.setBackgroundColor('#262421'); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); tg.BackButton.onClick(() => { if (chatOpen()) { closeChat(); return; } if (screen === 'home') return; goHome(); }); tg.onEvent('viewportChanged', setViewport); } catch (e) { /* older client */ }
     }
     setViewport(); applyI18n(); Profile.init(me.id, me.name);
     const vl = $('#verLine'); vl.textContent = 'v' + VERSION;
     vl.onclick = () => showModal(`<h3>v${esc(VERSION)}</h3><div class="diag">${esc('Telegram: ' + (tg ? 'так (' + (tg.platform || '?') + ' ' + (tg.version || '') + ')' : 'ні') + '\nWorker: ' + (typeof Worker !== 'undefined') + ' | engine: ' + engineVia + ' | fails: ' + workerFails + '\nCPU cores: ' + (navigator.hardwareConcurrency || '?') + ' | RAM(GB): ' + (navigator.deviceMemory || '?') + '\nFirebase: ' + (Net.enabled ? 'on' : 'off') + '\n' + (navigator.userAgent || '') + '\n---\n' + (diag.join('\n') || '(пусто)'))}</div><button class="big" id="mClose">${T('close')}</button>`, (box) => { $('#mClose', box).onclick = hideModal; });
-    window.__chess = { get G() { return G; }, get board() { return board; }, me, Profile, Sound, show, openGame, startAI, commitMove, tryUserMove, get screen() { return screen; } };
+    window.__chess = { get G() { return G; }, get board() { return board; }, me, Profile, Sound, show, openGame, startAI, startBot, commitMove, botReact, botSay, setChat, openChat, tryUserMove, get screen() { return screen; } };
     show('home');
     await Net.syncClock(); Profile.pull();
     const q = new URLSearchParams(location.search), hq = new URLSearchParams((location.hash || '').replace(/^#/, ''));
