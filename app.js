@@ -15,7 +15,7 @@
   const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
   let guestId = safe.get('chess.guest', null);
   if (!guestId) { guestId = 'g' + Math.random().toString(36).slice(2, 10); safe.set('chess.guest', guestId); }
-  const me = { id: tgUser ? String(tgUser.id) : guestId, name: tgUser ? ([tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Player') : 'Player', photo: tgUser && tgUser.photo_url };
+  const me = { id: tgUser ? String(tgUser.id) : guestId, name: tgUser ? ([tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Player') : (safe.get('chess.guestname', '') || 'Гість'), photo: tgUser && tgUser.photo_url };
   const settings = Object.assign({ lang: tgUser && tgUser.language_code === 'en' ? 'en' : 'uk', theme: 'sand', sound: 1, level: 5, side: 0, tc: { kind: 'rapid', amount: 10 }, sideF: 0 }, safe.get('chess.settings', {}));
   const saveSettings = () => safe.set('chess.settings', settings);
 
@@ -715,22 +715,23 @@
   /* waiting screen */
   const LINK_RE = /^https:\/\/t\.me\/[A-Za-z0-9_]{4,}(\/[A-Za-z0-9_]+)?\/?$/;
   const tgBase = () => { const l = (CFG.TG_APP_LINK || '').trim() || safe.get('chess.tglink', ''); return LINK_RE.test(l) ? l.replace(/\/+$/, '') : ''; };
-  const inviteLink = (gid) => (tgBase() ? tgBase() + '?startapp=g_' + gid : '');
+  const webBase = () => location.href.split('#')[0].split('?')[0].replace(/index\.html$/, '');
+  const inviteLink = (gid) => (tgBase() ? tgBase() + '?startapp=g_' + gid : webBase() + '?join=' + gid);
   function renderWaiting() {
     $('#waitCode').textContent = G.id;
     $('#waitInfo').textContent = `${T('your_color_is')}: ${G.myColor === WHITE ? T('white') : T('black')} · ${tcLabel(G.tc)}`;
-    $('#linkSetup').hidden = !!tgBase();
+    $('#linkSetup').hidden = true; $('#btnOptLink').hidden = !!tgBase();
   }
   function shareInvite() {
     const link = inviteLink(G.id);
-    if (!link) { $('#linkSetup').hidden = false; toast(T('link_setup_hint')); return; }
     const text = T('invite_msg');
     if (tg && tg.openTelegramLink) tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text));
     else if (navigator.share) navigator.share({ title: T('app'), text: text + '\n' + link }).catch(() => {});
     else copyText(text + ' ' + link);
   }
   $('#btnShare').onclick = shareInvite;
-  $('#btnCopyLink').onclick = () => { const link = inviteLink(G.id); if (!link) { $('#linkSetup').hidden = false; toast(T('link_setup_hint')); } else copyText(link); };
+  $('#btnOptLink').onclick = () => { $('#linkSetup').hidden = !$('#linkSetup').hidden; };
+  $('#btnCopyLink').onclick = () => { const link = inviteLink(G.id); copyText(link); toast(T('copied')); };
   $('#btnCopy').onclick = () => copyText(G.id);
   $('#btnSaveLink').onclick = () => {
     const v = $('#tgLinkInput').value.trim();
