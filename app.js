@@ -715,6 +715,11 @@
 
   /* waiting screen */
   const LINK_RE = /^https:\/\/t\.me\/[A-Za-z0-9_]{4,}(\/[A-Za-z0-9_]+)?\/?$/;
+  // accept whatever the user pastes: extra text, ?query, http, no scheme, @name -> https://t.me/name[/app]
+  function normLink(v) {
+    const m = String(v || '').match(/(?:https?:\/\/)?(?:t\.me|telegram\.me)\/([A-Za-z0-9_]{4,})(?:\/([A-Za-z0-9_]+))?/i);
+    return m ? 'https://t.me/' + m[1] + (m[2] ? '/' + m[2] : '') : '';
+  }
   const tgBase = () => { const l = (CFG.TG_APP_LINK || '').trim() || safe.get('chess.tglink', ''); return LINK_RE.test(l) ? l.replace(/\/+$/, '') : ''; };
   const webBase = () => location.href.split('#')[0].split('?')[0].replace(/index\.html$/, '');
   const inviteLink = (gid) => (tgBase() ? tgBase() + '?startapp=g_' + gid : webBase() + '?join=' + gid);
@@ -735,8 +740,9 @@
   $('#btnCopyLink').onclick = () => { const link = inviteLink(G.id); copyText(link); toast(T('copied')); };
   $('#btnCopy').onclick = () => copyText(G.id);
   $('#btnSaveLink').onclick = () => {
-    const v = $('#tgLinkInput').value.trim();
-    if (!LINK_RE.test(v)) { toast(T('link_bad')); return; }
+    const v = normLink($('#tgLinkInput').value);
+    if (!v) { $('#tgLinkErr').hidden = false; toast(T('link_bad')); return; }
+    $('#tgLinkErr').hidden = true; $('#tgLinkInput').value = v;
     const clean = v.replace(/\/+$/, ''); safe.set('chess.tglink', clean);
     if (Net.enabled) Net.put('config/tglink', clean).catch(() => {});   // shared: every player's app uses it
     renderWaiting(); toast(T('saved'));
