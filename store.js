@@ -41,9 +41,9 @@
       return pts;
     },
     async top(n) {
-      if (!Net.enabled) return [{ id: this.uid, name: this.name, u: this.extra.u, ph: this.extra.ph, w: this.data.w, d: this.data.d, l: this.data.l, pts: this.data.pts, played: this.data.played }];
+      if (!Net.enabled) return [{ id: this.uid, name: this.name, u: this.extra.u, known: true, ph: this.extra.ph, w: this.data.w, d: this.data.d, l: this.data.l, pts: this.data.pts, played: this.data.played }];
       const all = (await Net.get('players')) || {};
-      return Object.keys(all).map((id) => ({ id, name: all[id].name || '—', u: all[id].u || '', ph: all[id].ph || '', w: all[id].w || 0, d: all[id].d || 0, l: all[id].l || 0, pts: all[id].pts || 0, played: all[id].played || 0 }))
+      return Object.keys(all).map((id) => ({ id, name: all[id].name || '—', u: all[id].u || '', known: all[id].u !== undefined, ph: all[id].ph || '', w: all[id].w || 0, d: all[id].d || 0, l: all[id].l || 0, pts: all[id].pts || 0, played: all[id].played || 0 }))
         .filter((x) => x.played > 0).sort((a, b) => b.pts - a.pts || a.played - b.played).slice(0, n || 20);
     },
   };

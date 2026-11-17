@@ -866,12 +866,11 @@
     const initial = (Array.from((r.name || '').replace(/[^\p{L}\p{N}]/gu, ''))[0] || '♟').toUpperCase();
     showModal(`<div class="pcard"><div class="pcav">${photo ? `<img alt="" referrerpolicy="no-referrer" src="${esc(photo)}">` : esc(initial)}</div><h3>${esc(r.name)}</h3>${un ? `<div class="hint">@${esc(un)}</div>` : ''}
       <div class="pts">${r.pts} ${T('points')}</div><p>${T('matches')}: ${r.played} · ${T('wins')}: ${r.w || 0} · ${T('draws')}: ${r.d || 0} · ${T('losses')}: ${r.l || 0}</p></div>
-      ${r.id !== me.id && /^\d+$/.test(r.id) ? `<button class="big primary" id="mTg">✈️ ${T('open_tg')}</button>` : ''}<button class="big" id="mClose">${T('close')}</button>`, (box) => {
+      ${r.id === me.id ? '' : un ? `<button class="big primary" id="mTg">✈️ ${T('open_tg')}</button>` : `<p class="hint">${T(r.known ? 'no_username' : 'not_updated')}</p>`}<button class="big" id="mClose">${T('close')}</button>`, (box) => {
       $('#mClose', box).onclick = hideModal;
       const b = $('#mTg', box);
       if (b) b.onclick = () => {
-        if (un) { const u = 'https://t.me/' + un; if (tg && tg.openTelegramLink) tg.openTelegramLink(u); else window.open(u, '_blank'); }
-        else { const u = 'tg://user?id=' + r.id; toast(T('no_username')); try { window.location.href = u; } catch (e) { /* ignore */ } }
+        const u = 'https://t.me/' + un; if (tg && tg.openTelegramLink) tg.openTelegramLink(u); else window.open(u, '_blank');
       };
     });
   }
