@@ -723,10 +723,11 @@
   const tgBase = () => { const l = (CFG.TG_APP_LINK || '').trim() || safe.get('chess.tglink', ''); return LINK_RE.test(l) ? l.replace(/\/+$/, '') : ''; };
   const webBase = () => location.href.split('#')[0].split('?')[0].replace(/index\.html$/, '');
   const inviteLink = (gid) => (tgBase() ? tgBase() + '?startapp=g_' + gid : webBase() + '?join=' + gid);
+  async function refreshLink() { if (tgBase() || !Net.enabled) return; try { const l = await Net.get('config/tglink'); dlog('tglink from db: ' + l); if (typeof l === 'string' && normLink(l)) { safe.set('chess.tglink', normLink(l)); renderWaiting(); } } catch (e) { dlog('tglink read error: ' + e); } }
   function renderWaiting() {
     $('#waitCode').textContent = G.id;
     $('#waitInfo').textContent = `${T('your_color_is')}: ${G.myColor === WHITE ? T('white') : T('black')} · ${tcLabel(G.tc)}`;
-    $('#linkSetup').hidden = !!tgBase(); $('#btnOptLink').hidden = true;
+    $('#linkSetup').hidden = !!tgBase(); $('#btnOptLink').hidden = true; refreshLink();
   }
   function shareInvite() {
     const link = inviteLink(G.id);
@@ -743,9 +744,16 @@
     const v = normLink($('#tgLinkInput').value);
     if (!v) { $('#tgLinkErr').hidden = false; toast(T('link_bad')); return; }
     $('#tgLinkErr').hidden = true; $('#tgLinkInput').value = v;
-    const clean = v.replace(/\/+$/, ''); safe.set('chess.tglink', clean);
-    if (Net.enabled) Net.put('config/tglink', clean).catch(() => {});   // shared: every player's app uses it
-    renderWaiting(); toast(T('saved'));
+    const clean = v.replace(/\/+$/, ''), st = $('#tgLinkErr'); safe.set('chess.tglink', clean);
+    const okLocal = safe.get('chess.tglink', '') === clean;
+    const show = (msg, good) => { st.hidden = false; st.style.color = good ? '#8bd18b' : '#ff8a80'; st.textContent = msg; };
+    if (!Net.enabled) { show('Збережено лише на цьому телефоні: Firebase вимкнений (перевірте config.js). Друзі це посилання не побачать.', false); dlog('tglink: firebase off, local=' + okLocal); renderWaiting(); $('#linkSetup').hidden = false; return; }
+    show('Зберігаю…', true);
+    Net.put('config/tglink', clean).then(() => Net.get('config/tglink')).then((back) => {
+      dlog('tglink saved, read back: ' + back);
+      if (back === clean) { show('✓ Збережено для всіх гравців', true); setTimeout(renderWaiting, 1200); }
+      else show('База не прийняла посилання (відповідь: ' + String(back) + '). Перевірте правила Firebase (read/write: true).', false);
+    }).catch((e) => { dlog('tglink save error: ' + e); show('Не вдалося зберегти в базі: ' + e.message + '. Збережено лише на цьому телефоні. Перевірте правила Firebase (read/write: true).', false); });
   };
   $('#btnCancelWait').onclick = async () => {
     const gid = G && G.id; cancelEngine();
