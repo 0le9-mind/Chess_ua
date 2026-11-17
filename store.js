@@ -7,8 +7,9 @@
   };
   const POINTS = { win: 10, draw: 5, loss: 0 };
   const Profile = {
-    uid: null, name: 'Guest', data: null,
-    init(uid, name) {
+    uid: null, name: 'Guest', data: null, extra: { u: '', ph: '' },
+    init(uid, name, extra) {
+      this.extra = Object.assign({ u: '', ph: '' }, extra || {});
       this.uid = String(uid); this.name = name || 'Guest';
       this.data = safe.get('chess.profile.' + this.uid, null) || { pts: 0, played: 0, w: 0, d: 0, l: 0, scored: {} };
       this.data.name = this.name;
@@ -27,7 +28,7 @@
     push() {
       if (!Net.enabled) return Promise.resolve();
       const d = this.data;
-      return Net.patch('players/' + this.uid, { name: this.name, pts: d.pts, played: d.played, w: d.w, d: d.d, l: d.l, scored: d.scored }).catch(() => {});
+      return Net.patch('players/' + this.uid, { name: this.name, u: this.extra.u || '', ph: this.extra.ph || '', pts: d.pts, played: d.played, w: d.w, d: d.d, l: d.l, scored: d.scored }).catch(() => {});
     },
     // outcome: 'win'|'draw'|'loss'. Idempotent per game id. Returns points added (0 if already counted).
     record(gid, outcome) {
@@ -40,9 +41,9 @@
       return pts;
     },
     async top(n) {
-      if (!Net.enabled) return [{ id: this.uid, name: this.name, pts: this.data.pts, played: this.data.played }];
+      if (!Net.enabled) return [{ id: this.uid, name: this.name, u: this.extra.u, ph: this.extra.ph, w: this.data.w, d: this.data.d, l: this.data.l, pts: this.data.pts, played: this.data.played }];
       const all = (await Net.get('players')) || {};
-      return Object.keys(all).map((id) => ({ id, name: all[id].name || '—', pts: all[id].pts || 0, played: all[id].played || 0 }))
+      return Object.keys(all).map((id) => ({ id, name: all[id].name || '—', u: all[id].u || '', ph: all[id].ph || '', w: all[id].w || 0, d: all[id].d || 0, l: all[id].l || 0, pts: all[id].pts || 0, played: all[id].played || 0 }))
         .filter((x) => x.played > 0).sort((a, b) => b.pts - a.pts || a.played - b.played).slice(0, n || 20);
     },
   };

@@ -154,3 +154,6 @@ input[type=range]{width:100%;accent-color:var(--accent);height:34px}
 .boardcol{position:relative}
 .bubble{position:absolute;left:8px;top:calc(var(--pbar) + 6px);max-width:84%;z-index:40;display:flex;gap:8px;align-items:flex-start;background:#fffef8;color:#222;border-radius:12px 12px 12px 3px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.45);font-size:14px;line-height:1.35;animation:pop .18s ease-out}
 .bubble[hidden]{display:none}.bubble .bav{width:34px;height:34px;border-radius:8px;overflow:hidden;flex:none}.bubble b{display:block;font-size:12px;color:#8a5a00}
+
+button.toprow{width:100%;text-align:left;color:inherit}.toprow .go{color:var(--muted);margin-left:6px}
+.pcard{text-align:center}.pcav{width:84px;height:84px;border-radius:20px;margin:0 auto 8px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;overflow:hidden}.pcav img{width:100%;height:100%;object-fit:cover}

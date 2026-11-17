@@ -646,6 +646,7 @@
     }
     G.drawOffer = remote.drawOffer;
     setChat(doc.chat);
+    for (const [key, seat] of [['white', remote.white], ['black', remote.black]]) if (seat && seat.id === me.id && me.photo && seat.photo !== me.photo && /^https:\/\//.test(me.photo)) Net.patch('games/' + G.id + '/' + key, { photo: me.photo, name: me.name }).catch(() => {});
     if (was === 'waiting' && remote.status === 'active') { G.status = 'active'; toast(T('opp_joined')); haptic('ok'); if (screen === 'waiting') { flip = G.myColor === BLACK; show('game'); buildBoard(); startClockTimer(); } }
     if (remote.status === 'over' && G.status !== 'over') { G.status = 'active'; finishGame(remote.result, remote.reason, false); }
     else if (remote.status === 'active') G.status = 'active';
@@ -859,11 +860,27 @@
     const av = $('#pAvatar'); if (me.photo) { av.style.backgroundImage = `url("${me.photo}")`; av.textContent = ''; } else { av.style.backgroundImage = ''; av.textContent = '♟'; }
     Profile.pull().then(() => { const x = Profile.data; $('#pRate').textContent = x.pts; $('#pPlayed').textContent = x.played; $('#pW').textContent = x.w; $('#pD').textContent = x.d; $('#pL').textContent = x.l; });
   }
+  function openPlayer(r) {
+    if (!r) return;
+    const un = /^[A-Za-z0-9_]{4,}$/.test(r.u || '') ? r.u : '', photo = /^https:\/\//.test(r.ph || '') ? r.ph : '';
+    const initial = (Array.from((r.name || '').replace(/[^\p{L}\p{N}]/gu, ''))[0] || '♟').toUpperCase();
+    showModal(`<div class="pcard"><div class="pcav">${photo ? `<img alt="" referrerpolicy="no-referrer" src="${esc(photo)}">` : esc(initial)}</div><h3>${esc(r.name)}</h3>${un ? `<div class="hint">@${esc(un)}</div>` : ''}
+      <div class="pts">${r.pts} ${T('points')}</div><p>${T('matches')}: ${r.played} · ${T('wins')}: ${r.w || 0} · ${T('draws')}: ${r.d || 0} · ${T('losses')}: ${r.l || 0}</p></div>
+      ${r.id !== me.id && /^\d+$/.test(r.id) ? `<button class="big primary" id="mTg">✈️ ${T('open_tg')}</button>` : ''}<button class="big" id="mClose">${T('close')}</button>`, (box) => {
+      $('#mClose', box).onclick = hideModal;
+      const b = $('#mTg', box);
+      if (b) b.onclick = () => {
+        if (un) { const u = 'https://t.me/' + un; if (tg && tg.openTelegramLink) tg.openTelegramLink(u); else window.open(u, '_blank'); }
+        else { const u = 'tg://user?id=' + r.id; toast(T('no_username')); try { window.location.href = u; } catch (e) { /* ignore */ } }
+      };
+    });
+  }
   async function renderTop() {
     const box = $('#topList'); box.innerHTML = `<div class="empty">${T('loading')}</div>`;
     try {
       const rows = await Profile.top(30);
-      box.innerHTML = rows.length ? rows.map((r, i) => `<div class="toprow${r.id === me.id ? ' me' : ''}"><span class="n">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.pts}</span></div>`).join('') : `<div class="empty">${T('no_players')}</div>`;
+      box.innerHTML = rows.length ? rows.map((r, i) => `<button class="toprow${r.id === me.id ? ' me' : ''}" data-i="${i}"><span class="n">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.pts}</span><span class="go">›</span></button>`).join('') : `<div class="empty">${T('no_players')}</div>`;
+      $$('.toprow', box).forEach((el) => { el.onclick = () => openPlayer(rows[+el.dataset.i]); });
     } catch (e) { box.innerHTML = `<div class="empty">${T('error_net')}</div>`; }
   }
 
@@ -913,12 +930,12 @@
     if (tg) {
       try { tg.ready(); tg.expand(); tg.setHeaderColor('#262421'); tg.setBackgroundColor('#262421'); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); tg.BackButton.onClick(() => { if (chatOpen()) { closeChat(); return; } if (screen === 'home') return; goHome(); }); tg.onEvent('viewportChanged', setViewport); } catch (e) { /* older client */ }
     }
-    setViewport(); applyI18n(); Profile.init(me.id, me.name);
+    setViewport(); applyI18n(); Profile.init(me.id, me.name, { u: (tgUser && tgUser.username) || '', ph: /^https:\/\//.test(me.photo || '') ? me.photo : '' });
     const vl = $('#verLine'); vl.textContent = 'v' + VERSION;
     vl.onclick = () => showModal(`<h3>v${esc(VERSION)}</h3><div class="diag">${esc('Telegram: ' + (tg ? 'так (' + (tg.platform || '?') + ' ' + (tg.version || '') + ')' : 'ні') + '\nWorker: ' + (typeof Worker !== 'undefined') + ' | engine: ' + engineVia + ' | fails: ' + workerFails + '\nCPU cores: ' + (navigator.hardwareConcurrency || '?') + ' | RAM(GB): ' + (navigator.deviceMemory || '?') + '\nFirebase: ' + (Net.enabled ? 'on' : 'off') + '\n' + (navigator.userAgent || '') + '\n---\n' + (diag.join('\n') || '(пусто)'))}</div><button class="big" id="mClose">${T('close')}</button>`, (box) => { $('#mClose', box).onclick = hideModal; });
     window.__chess = { get G() { return G; }, get board() { return board; }, me, Profile, Sound, show, openGame, startAI, startBot, commitMove, botReact, botSay, setChat, openChat, tryUserMove, get screen() { return screen; } };
     show('home');
-    await Net.syncClock(); Profile.pull();
+    await Net.syncClock(); Profile.pull().then(() => { if (Net.enabled && Profile.data.played) Profile.push(); else if (Net.enabled && (Profile.extra.u || Profile.extra.ph)) Net.patch('players/' + me.id, { name: me.name, u: Profile.extra.u, ph: Profile.extra.ph }).catch(() => {}); });
     const q = new URLSearchParams(location.search), hq = new URLSearchParams((location.hash || '').replace(/^#/, ''));
     const param = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || hq.get('tgWebAppStartParam') || q.get('tgWebAppStartParam') || q.get('startapp') || q.get('join') || hq.get('join') || '';
     const code = String(param).replace(/^g_/, '').replace(/[^A-Za-z0-9]/g, '');
