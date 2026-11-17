@@ -721,7 +721,7 @@
   function renderWaiting() {
     $('#waitCode').textContent = G.id;
     $('#waitInfo').textContent = `${T('your_color_is')}: ${G.myColor === WHITE ? T('white') : T('black')} · ${tcLabel(G.tc)}`;
-    $('#linkSetup').hidden = true; $('#btnOptLink').hidden = !!tgBase();
+    $('#linkSetup').hidden = !!tgBase(); $('#btnOptLink').hidden = true;
   }
   function shareInvite() {
     const link = inviteLink(G.id);
@@ -737,7 +737,9 @@
   $('#btnSaveLink').onclick = () => {
     const v = $('#tgLinkInput').value.trim();
     if (!LINK_RE.test(v)) { toast(T('link_bad')); return; }
-    safe.set('chess.tglink', v.replace(/\/+$/, '')); renderWaiting(); toast(T('copied'));
+    const clean = v.replace(/\/+$/, ''); safe.set('chess.tglink', clean);
+    if (Net.enabled) Net.put('config/tglink', clean).catch(() => {});   // shared: every player's app uses it
+    renderWaiting(); toast(T('saved'));
   };
   $('#btnCancelWait').onclick = async () => {
     const gid = G && G.id; cancelEngine();
@@ -935,10 +937,12 @@
     window.__chess = { get G() { return G; }, get board() { return board; }, me, Profile, Sound, show, openGame, startAI, startBot, commitMove, botReact, botSay, setChat, openChat, tryUserMove, get screen() { return screen; } };
     show('home');
     await Net.syncClock(); Profile.pull().then(() => { if (Net.enabled && Profile.data.played) Profile.push(); else if (Net.enabled && (Profile.extra.u || Profile.extra.ph)) Net.patch('players/' + me.id, { name: me.name, u: Profile.extra.u, ph: Profile.extra.ph }).catch(() => {}); });
+    if (Net.enabled) { try { const l = await Net.get('config/tglink'); if (typeof l === 'string' && LINK_RE.test(l)) safe.set('chess.tglink', l); } catch (e) { /* offline */ } }
     const q = new URLSearchParams(location.search), hq = new URLSearchParams((location.hash || '').replace(/^#/, ''));
     const param = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || hq.get('tgWebAppStartParam') || q.get('tgWebAppStartParam') || q.get('startapp') || q.get('join') || hq.get('join') || '';
     const code = String(param).replace(/^g_/, '').replace(/[^A-Za-z0-9]/g, '');
     dlog('start param: ' + (param || '-'));
+    if (code && !tg && tgBase()) { location.replace(tgBase() + '?startapp=g_' + code); return; }   // opened in a browser: bounce into Telegram, where the real profile exists
     if (code) { toast(T('joining')); await joinFriendGame(code, true); } else renderHome();
   }
   boot();
